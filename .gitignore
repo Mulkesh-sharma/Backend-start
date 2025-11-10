@@ -4,6 +4,9 @@ node_modules/
 # Environment variables
 .env
 
+#database connection
+db.js
+
 # Logs
 logs
 *.log
