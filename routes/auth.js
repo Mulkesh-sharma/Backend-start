@@ -5,30 +5,45 @@ const User = require("../models/User");
 
 const router = express.Router();
 
-// ---------------------- SIGNUP ----------------------
 router.post("/signup", async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password } = req.body || {};
 
-    // Check if user already exists
+    let errors = [];
+
+    // ---- VALIDATE FIELDS ----
+    if (!name || name.trim() === "") errors.push("Name is required");
+    if (!email || email.trim() === "") errors.push("Email is required");
+
+    if (!password || password === "") {
+      errors.push("Password is required");
+    } else if (password.length < 6) {
+      errors.push("Password must be at least 6 characters long");
+    }
+
+    // If validation failed → send all errors
+    if (errors.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: errors.join(", "),
+        errors,
+      });
+    }
+
+    // Check if email exists
     const exists = await User.findOne({ email });
     if (exists) {
       return res.status(400).json({
         success: false,
-        message: "Email already registered",
+        message: "Email already registered. Please log in.",
       });
     }
 
-    // Hash password
+    // Create hashed password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create new user
-    const newUser = new User({
-      name,
-      email,
-      password: hashedPassword,
-    });
-
+    // Save user
+    const newUser = new User({ name, email, password: hashedPassword });
     await newUser.save();
 
     return res.status(201).json({
@@ -40,39 +55,55 @@ router.post("/signup", async (req, res) => {
         email: newUser.email,
       },
     });
+
   } catch (error) {
     console.error("Signup Error:", error);
     return res.status(500).json({
       success: false,
-      message: "Server error during signup",
+      message: "Internal server error during signup",
     });
   }
 });
 
-// ---------------------- LOGIN ----------------------
+
 router.post("/login", async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password } = req.body || {};
 
-    // Check if email exists
+    let errors = [];
+
+    // ---- VALIDATE FIELDS ----
+    if (!email || email.trim() === "") errors.push("Email is required");
+    if (!password || password.trim() === "") errors.push("Password is required");
+
+    // If missing fields → show all at once
+    if (errors.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: errors.join(", "),
+        errors,
+      });
+    }
+
+    // Check if user exists
     const user = await User.findOne({ email });
     if (!user) {
       return res.status(400).json({
         success: false,
-        message: "Invalid email or password",
+        message: "Email not found. Please signup.",
       });
     }
 
-    // Validate password
+    // Check password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(400).json({
         success: false,
-        message: "Invalid email or password",
+        message: "Incorrect password",
       });
     }
 
-    // Create JWT token
+    // Create token
     const token = jwt.sign(
       { userId: user._id },
       process.env.JWT_SECRET,
@@ -89,11 +120,12 @@ router.post("/login", async (req, res) => {
         email: user.email,
       },
     });
+
   } catch (error) {
     console.error("Login Error:", error);
     return res.status(500).json({
       success: false,
-      message: "Server error during login",
+      message: "Internal server error during login",
     });
   }
 });

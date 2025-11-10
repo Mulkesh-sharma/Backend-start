@@ -4,88 +4,163 @@ const auth = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
-// All product routes require authentication
+// All routes require login
 router.use(auth);
 
 /**
- * GET all products belonging only to the logged-in user
+ * ✅ GET ALL PRODUCTS (user-specific)
  */
 router.get("/", async (req, res) => {
   try {
     const products = await Product.find({ owner: req.user.userId }).sort({ createdAt: -1 });
-    res.json(products);
+
+    return res.status(200).json({
+      success: true,
+      count: products.length,
+      products,
+    });
   } catch (err) {
-    res.status(500).json({ message: "Server Error" });
+    console.error("Get Products Error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while fetching products",
+    });
   }
 });
 
 /**
- * ADD product (only for the logged-in user)
+ * ✅ ADD NEW PRODUCT (Smart validation)
  */
 router.post("/", async (req, res) => {
+  const { name, price, quantity } = req.body || {};
+
+  let errors = [];
+
+  // Validate fields one by one
+  if (!name || name.trim() === "") errors.push("Product name is required");
+
+  if (price === undefined || price === null || price === "")
+    errors.push("Price is required");
+  else if (Number(price) <= 0)
+    errors.push("Price must be a positive number");
+
+  if (quantity === undefined || quantity === null || quantity === "")
+    errors.push("Quantity is required");
+  else if (Number(quantity) <= 0)
+    errors.push("Quantity must be a positive number");
+
+  // If errors exist, stop and return all messages
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      message: errors.join(", "),
+      errors,
+    });
+  }
+
+  // If all fields valid → save product
   try {
-    const { name, price, quantity } = req.body;
-
-    if (!name || !price || !quantity) {
-      return res.status(400).json({ message: "All fields are required" });
-    }
-
-    const newProduct = new Product({
+    const product = new Product({
       name,
       price,
       quantity,
-      owner: req.user.userId,   // IMPORTANT 🔥 attach owner
+      owner: req.user.userId,
     });
 
-    await newProduct.save();
+    await product.save();
 
-    res.status(201).json({
-      message: "Product added!",
-      product: newProduct,
+    return res.status(201).json({
+      success: true,
+      message: "Product added successfully",
+      product,
     });
   } catch (err) {
-    res.status(500).json({ message: "Failed to add product" });
+    console.error("Add Product Error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while adding product",
+    });
   }
 });
 
 /**
- * UPDATE product (only if it belongs to the logged-in user)
+ * ✅ UPDATE PRODUCT (smart validation for optional fields)
  */
 router.put("/:id", async (req, res) => {
+  const { name, price, quantity } = req.body || {};
+
+  let errors = [];
+
+  if (price !== undefined && Number(price) <= 0)
+    errors.push("Price must be a positive number");
+
+  if (quantity !== undefined && Number(quantity) <= 0)
+    errors.push("Quantity must be a positive number");
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      message: errors.join(", "),
+      errors,
+    });
+  }
+
   try {
     const updated = await Product.findOneAndUpdate(
-      { _id: req.params.id, owner: req.user.userId }, // filter by owner
+      { _id: req.params.id, owner: req.user.userId },
       req.body,
       { new: true }
     );
 
     if (!updated) {
-      return res.status(404).json({ message: "Product not found or unauthorized" });
+      return res.status(404).json({
+        success: false,
+        message: "Product not found or unauthorized",
+      });
     }
 
-    res.json({ message: "Product updated!", product: updated });
+    return res.status(200).json({
+      success: true,
+      message: "Product updated successfully",
+      product: updated,
+    });
   } catch (err) {
-    res.status(500).json({ message: "Failed to update product" });
+    console.error("Update Product Error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while updating product",
+    });
   }
 });
 
 /**
- * DELETE product (only if it belongs to the logged-in user)
+ * ✅ DELETE PRODUCT
  */
 router.delete("/:id", async (req, res) => {
   try {
     const deleted = await Product.findOneAndDelete({
       _id: req.params.id,
-      owner: req.user.userId, // ensure user can only delete own product
+      owner: req.user.userId,
     });
 
     if (!deleted) {
-      return res.status(404).json({ message: "Product not found or unauthorized" });
+      return res.status(404).json({
+        success: false,
+        message: "Product not found or unauthorized",
+      });
     }
 
-    res.json({ message: "Product deleted!", deleted });
+    return res.status(200).json({
+      success: true,
+      message: "Product deleted successfully",
+      deleted,
+    });
   } catch (err) {
-    res.status(500).json({ message: "Failed to delete product" });
+    console.error("Delete Product Error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while deleting product",
+    });
   }
 });
 
