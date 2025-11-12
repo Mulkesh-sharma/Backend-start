@@ -6,146 +6,98 @@ const auth = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
-/* =====================================================
-   ✅ SIGNUP (Strong validation + clean messages)
-   ===================================================== */
+// Signup
 router.post("/signup", async (req, res) => {
   try {
     const { name, email, password } = req.body || {};
-
-    let errors = [];
-
-    if (!name || name.trim() === "") errors.push("Name is required");
-    if (!email || email.trim() === "") errors.push("Email is required");
-    if (!password || password.trim() === "")
-      errors.push("Password is required");
-    else if (password.length < 6)
-      errors.push("Password must be at least 6 characters long");
-
-    if (errors.length > 0) {
-      return res.status(400).json({
-        success: false,
-        message: errors.join(", "),
-        errors,
-      });
+    if (!name || !email || !password) {
+      return res.status(400).json({ success: false, message: "Name, email and password are required" });
     }
 
-    const exists = await User.findOne({ email });
-    if (exists) {
-      return res.status(400).json({
-        success: false,
-        message: "Email already registered. Please log in.",
-      });
-    }
+    const existing = await User.findOne({ email: email.toLowerCase() });
+    if (existing) return res.status(400).json({ success: false, message: "Email already registered" });
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const salt = await bcrypt.genSalt(10);
+    const hashed = await bcrypt.hash(password, salt);
 
-    const newUser = new User({
-      name,
-      email,
-      password: hashedPassword,
-    });
+    const user = new User({ name, email: email.toLowerCase(), password: hashed });
+    await user.save();
 
-    await newUser.save();
+    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
 
-    return res.status(201).json({
-      success: true,
-      message: "Signup successful",
-      user: {
-        _id: newUser._id,
-        name: newUser.name,
-        email: newUser.email,
-      },
-    });
-  } catch (error) {
-    console.error("Signup Error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error during signup",
-    });
+    res.json({ success: true, token, user: { id: user._id, name: user.name, email: user.email } });
+  } catch (err) {
+    console.error("Signup Error:", err);
+    res.status(500).json({ success: false, message: "Server error during signup" });
   }
 });
 
-/* =====================================================
-   ✅ LOGIN (Clear errors + token generation)
-   ===================================================== */
+// Login
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body || {};
-    let errors = [];
+    if (!email || !password) return res.status(400).json({ success: false, message: "Email and password are required" });
 
-    if (!email || email.trim() === "") errors.push("Email is required");
-    if (!password || password.trim() === "") errors.push("Password is required");
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) return res.status(400).json({ success: false, message: "Invalid credentials" });
 
-    if (errors.length > 0) {
-      return res.status(400).json({
-        success: false,
-        message: errors.join(", "),
-        errors,
-      });
-    }
+    const match = await bcrypt.compare(password, user.password);
+    if (!match) return res.status(400).json({ success: false, message: "Invalid credentials" });
 
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(400).json({
-        success: false,
-        message: "Email not found. Please signup.",
-      });
-    }
+    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
 
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(400).json({
-        success: false,
-        message: "Incorrect password",
-      });
-    }
-
-    const token = jwt.sign(
-      { userId: user._id },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
-
-    return res.json({
-      success: true,
-      message: "Login successful!",
-      token,
-      user: {
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-      },
-    });
-  } catch (error) {
-    console.error("Login Error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error during login",
-    });
+    res.json({ success: true, token, user: { id: user._id, name: user.name, email: user.email, storeName: user.storeName, ownerName: user.ownerName, storeType: user.storeType } });
+  } catch (err) {
+    console.error("Login Error:", err);
+    res.status(500).json({ success: false, message: "Server error during login" });
   }
 });
 
-/* =====================================================
-   ✅ GET LOGGED-IN USER PROFILE
-   ===================================================== */
-router.get("/me", auth, async (req, res) => {
+// Get profile
+router.get("/profile", auth, async (req, res) => {
   try {
     const user = await User.findById(req.user.userId).select("-password");
-
-    if (!user)
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
-
+    if (!user) return res.status(404).json({ success: false, message: "User not found" });
     res.json({ success: true, user });
   } catch (err) {
     console.error("Profile Error:", err);
-    res.status(500).json({
-      success: false,
-      message: "Server error fetching profile",
-    });
+    res.status(500).json({ success: false, message: "Server error fetching profile" });
+  }
+});
+
+// Update profile
+router.put("/profile", auth, async (req, res) => {
+  try {
+    const updates = (({ name, storeName, ownerName, storeType, phone }) => ({ name, storeName, ownerName, storeType, phone }))(req.body || {});
+    const user = await User.findByIdAndUpdate(req.user.userId, { $set: updates }, { new: true }).select("-password");
+    if (!user) return res.status(404).json({ success: false, message: "User not found" });
+    res.json({ success: true, user, message: "Profile updated" });
+  } catch (err) {
+    console.error("Update Profile Error:", err);
+    res.status(500).json({ success: false, message: "Server error updating profile" });
+  }
+});
+
+// Change password
+router.put("/change-password", auth, async (req, res) => {
+  try {
+    const { oldPassword, newPassword } = req.body || {};
+    if (!oldPassword || !newPassword) return res.status(400).json({ success: false, message: "Old and new passwords are required" });
+
+    const user = await User.findById(req.user.userId);
+    if (!user) return res.status(404).json({ success: false, message: "User not found" });
+
+    const match = await bcrypt.compare(oldPassword, user.password);
+    if (!match) return res.status(400).json({ success: false, message: "Old password is incorrect" });
+
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(newPassword, salt);
+    await user.save();
+
+    res.json({ success: true, message: "Password updated" });
+  } catch (err) {
+    console.error("Change Password Error:", err);
+    res.status(500).json({ success: false, message: "Server error changing password" });
   }
 });
 
