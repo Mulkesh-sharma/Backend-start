@@ -1,35 +1,51 @@
+// server.js
+require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const connectDB = require("./db");
 
-require("dotenv").config();
-
-// Routes
 const authRoutes = require("./routes/auth");
-const productRoutes = require("./routes/productRoutes"); // <-- NEW
+const productRoutes = require("./routes/productRoutes");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middleware
-app.use(express.json());
-app.use(cors());
+// 🔌 Middlewares
 
-// Connect to DB
+app.use(express.json());
+
+// Allow frontend access (React Native)
+app.use(
+  cors({
+    origin: "*", // Or specify your frontend URL
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
+
+// 📡 Connect to DB
+
 connectDB();
 
-// Test Route
+// 🏠 Basic Route
+
 app.get("/", (req, res) => {
-  res.send("✅ Backend Running & Connected to MongoDB");
+  res.json({
+    success: true,
+    message: "✅ Backend Running Successfully & Connected!",
+  });
 });
 
-// Auth Routes (public)
+// 📌 Public Routes
+
 app.use("/auth", authRoutes);
 
-// Product Routes (protected inside router)
+// 🔐 Protected Product Routes
+// (Auth is handled *inside* the router)
 app.use("/products", productRoutes);
 
-// Start Server
+// 🚀 Start Server
+
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
