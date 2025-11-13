@@ -4,6 +4,7 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const auth = require("../middleware/authMiddleware");
+const { googleLogin } = require("../controllers/authController.js");
 
 const router = express.Router();
 
@@ -38,6 +39,7 @@ router.post("/signup", async (req, res) => {
   }
 });
 
+router.post("/google", googleLogin);
 // Login
 router.post("/login", async (req, res) => {
   try {

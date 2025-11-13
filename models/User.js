@@ -10,6 +10,9 @@ const userSchema = new mongoose.Schema({
   ownerName: { type: String, default: "" },
   storeType: { type: String, default: "" },
   phone: { type: String, default: "" },
+  googleId: { type: String, sparse: true },
+  avatar: { type: String },
+
 }, { timestamps: true });
 
 module.exports = mongoose.model("User", userSchema);
